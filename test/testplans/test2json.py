@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+
+# This script will parse all the MD files stored under test/test plans
+# and build a json structure with all the information found in those
+# markdown files. Nesting the entries based on the Headers (H1, H2, H3).
+# USAGE: python test2json.py
+
 import os
 import re
 import json
