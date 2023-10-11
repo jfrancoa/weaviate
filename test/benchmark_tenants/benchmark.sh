@@ -67,10 +67,10 @@ EOF
 # Function to be invoked for "run" option
 run_benchmark() {
 
-	local number=${1:-""}
+    local number=${1:-""}
     echo "Running benchmark..."
 
-	${GO_BIN_PATH}/go run . --number ${number}
+    {GO_BIN_PATH}/go run . --number ${number}
 
     # Store weaviate logs for debugging under logs directory
     timestamp=$(date +"%Y%m%d_%H%M%S")
@@ -101,7 +101,7 @@ interactive_mode() {
     while true; do
         echo "Please, select one of the options:"
         echo "1. prepare"
-		echo "2. run (default:1000 tenants)"
+        echo "2. run (default:1000 tenants)"
         echo "3. cleanup"
         echo "4. exit"
 
@@ -138,11 +138,11 @@ interactive_mode() {
 # Check if any options are passed
 if [ $# -eq 0 ]; then
     echo "Usage: $0 <options>"
-	echo "options:"
-	echo "         prepare"
-	echo "         run <number_of_tenants>"
-	echo "         cleanup"
-	echo "         interactive"
+    echo "options:"
+    echo "         prepare"
+    echo "         run <number_of_tenants>"
+    echo "         cleanup"
+    echo "         interactive"
     exit 1
 fi
 
@@ -177,11 +177,11 @@ case $1 in
         prepare_benchmark
         ;;
     "run")
-		if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
+        if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
             run_benchmark $2
-		else
-        	run_benchmark
-		fi
+        else
+           run_benchmark
+        fi
         ;;
     "cleanup")
         cleanup_benchmark
