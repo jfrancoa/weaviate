@@ -70,7 +70,7 @@ run_benchmark() {
     local number=${1:-""}
     echo "Running benchmark..."
 
-    {GO_BIN_PATH}/go run . --number ${number}
+    ${GO_BIN_PATH}/go run . --number ${number}
 
     # Store weaviate logs for debugging under logs directory
     timestamp=$(date +"%Y%m%d_%H%M%S")
