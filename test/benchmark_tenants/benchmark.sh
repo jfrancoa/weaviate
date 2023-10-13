@@ -67,7 +67,7 @@ EOF
 # Function to be invoked for "run" option
 run_benchmark() {
 
-    local number=${1:-""}
+    local number=${1:-1000}
     echo "Running benchmark..."
 
     ${GO_BIN_PATH}/go run . --number ${number}
