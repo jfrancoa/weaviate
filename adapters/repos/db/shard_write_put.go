@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,7 +29,7 @@ import (
 	"github.com/weaviate/weaviate/entities/storobj"
 )
 
-func (s *Shard) putObject(ctx context.Context, object *storobj.Object) error {
+func (s *Shard) PutObject(ctx context.Context, object *storobj.Object) error {
 	if s.isReadOnly() {
 		return storagestate.ErrStatusReadOnly
 	}
@@ -42,9 +43,9 @@ func (s *Shard) putObject(ctx context.Context, object *storobj.Object) error {
 func (s *Shard) putOne(ctx context.Context, uuid []byte, object *storobj.Object) error {
 	if object.Vector != nil {
 		// validation needs to happen before any changes are done. Otherwise, insertion is aborted somewhere in-between.
-		err := s.vectorIndex.ValidateBeforeInsert(object.Vector)
+		err := s.VectorIndex().ValidateBeforeInsert(object.Vector)
 		if err != nil {
-			return errors.Wrapf(err, "Validate vector index for %v", uuid)
+			return errors.Wrapf(err, "Validate vector index for %s", object.ID())
 		}
 	}
 
@@ -65,11 +66,11 @@ func (s *Shard) putOne(ctx context.Context, uuid []byte, object *storobj.Object)
 		return errors.Wrap(err, "flush all buffered WALs")
 	}
 
-	if err := s.propLengths.Flush(false); err != nil {
+	if err := s.GetPropertyLengthTracker().Flush(false); err != nil {
 		return errors.Wrap(err, "flush prop length tracker to disk")
 	}
 
-	if err := s.vectorIndex.Flush(); err != nil {
+	if err := s.VectorIndex().Flush(); err != nil {
 		return errors.Wrap(err, "flush all vector index buffered WALs")
 	}
 
@@ -88,7 +89,7 @@ func (s *Shard) updateVectorIndexIgnoreDelete(vector []float32,
 		return nil
 	}
 
-	if err := s.vectorIndex.Add(status.docID, vector); err != nil {
+	if err := s.VectorIndex().Add(status.docID, vector); err != nil {
 		return errors.Wrapf(err, "insert doc id %d to vector index", status.docID)
 	}
 
@@ -103,7 +104,7 @@ func (s *Shard) updateVectorIndex(vector []float32,
 	// exists. otherwise, the associated doc id is left dangling,
 	// resulting in failed attempts to merge an object on restarts.
 	if status.docIDChanged {
-		if err := s.vectorIndex.Delete(status.oldDocID); err != nil {
+		if err := s.queue.Delete(status.oldDocID); err != nil {
 			return errors.Wrapf(err, "delete doc id %d from vector index", status.oldDocID)
 		}
 	}
@@ -114,7 +115,7 @@ func (s *Shard) updateVectorIndex(vector []float32,
 		return nil
 	}
 
-	if err := s.vectorIndex.Add(status.docID, vector); err != nil {
+	if err := s.VectorIndex().Add(status.docID, vector); err != nil {
 		return errors.Wrapf(err, "insert doc id %d to vector index", status.docID)
 	}
 
@@ -254,7 +255,7 @@ func (s *Shard) upsertObjectDataLSM(bucket *lsmkv.Bucket, id []byte, data []byte
 func (s *Shard) updateInvertedIndexLSM(object *storobj.Object,
 	status objectInsertStatus, previous []byte,
 ) error {
-	props, nilprops, err := s.analyzeObject(object)
+	props, nilprops, err := s.AnalyzeObject(object)
 	if err != nil {
 		return errors.Wrap(err, "analyze next object")
 	}
@@ -263,7 +264,7 @@ func (s *Shard) updateInvertedIndexLSM(object *storobj.Object,
 		oldObject, err := storobj.FromBinary(previous)
 		if err == nil {
 
-			oldProps, _, err := s.analyzeObject(oldObject)
+			oldProps, _, err := s.AnalyzeObject(oldObject)
 			if err != nil {
 				s.index.logger.WithField("action", "subtractPropLengths").WithError(err).Error("could not analyse prop lengths")
 			}
@@ -272,6 +273,10 @@ func (s *Shard) updateInvertedIndexLSM(object *storobj.Object,
 				s.index.logger.WithField("action", "subtractPropLengths").WithError(err).Error("could not subtract prop lengths")
 			}
 
+		}
+	} else {
+		if err := s.ChangeObjectCountBy(1); err != nil {
+			return fmt.Errorf("increment object count: %w", err)
 		}
 	}
 
@@ -296,7 +301,7 @@ func (s *Shard) updateInvertedIndexLSM(object *storobj.Object,
 	}
 	s.metrics.InvertedExtend(before, len(props))
 
-	if err := s.addPropLengths(props); err != nil {
+	if err := s.SetPropertyLengths(props); err != nil {
 		return errors.Wrap(err, "store field length values for props")
 	}
 
@@ -358,7 +363,7 @@ func (s *Shard) updateInvertedIndexCleanupOldLSM(status objectInsertStatus,
 	}
 
 	// TODO text_rbm_inverted_index null props cleanup?
-	previousInvertProps, _, err := s.analyzeObject(previousObject)
+	previousInvertProps, _, err := s.AnalyzeObject(previousObject)
 	if err != nil {
 		return errors.Wrap(err, "analyze previous object")
 	}

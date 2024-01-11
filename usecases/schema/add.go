@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -56,7 +56,7 @@ func (m *Manager) AddClass(ctx context.Context, principal *models.Principal,
 	// TODO gh-846: Rollback state update if migration fails
 }
 
-func (m *Manager) RestoreClass(ctx context.Context, d *backup.ClassDescriptor) error {
+func (m *Manager) RestoreClass(ctx context.Context, d *backup.ClassDescriptor, nodeMapping map[string]string) error {
 	// get schema and sharding state
 	class := &models.Class{}
 	if err := json.Unmarshal(d.Schema, &class); err != nil {
@@ -105,6 +105,7 @@ func (m *Manager) RestoreClass(ctx context.Context, d *backup.ClassDescriptor) e
 	}
 
 	shardingState.MigrateFromOldFormat()
+	shardingState.ApplyNodeMapping(nodeMapping)
 
 	payload, err := CreateClassPayload(class, &shardingState)
 	if err != nil {
@@ -113,7 +114,6 @@ func (m *Manager) RestoreClass(ctx context.Context, d *backup.ClassDescriptor) e
 	shardingState.SetLocalName(m.clusterState.LocalName())
 	m.schemaCache.addClass(class, &shardingState)
 
-	// payload.Shards
 	if err := m.repo.NewClass(ctx, payload); err != nil {
 		return err
 	}
@@ -512,13 +512,13 @@ func (m *Manager) validateProperty(
 func (m *Manager) parseVectorIndexConfig(ctx context.Context,
 	class *models.Class,
 ) error {
-	if class.VectorIndexType != "hnsw" {
+	if class.VectorIndexType != "hnsw" && class.VectorIndexType != "flat" {
 		return errors.Errorf(
 			"parse vector index config: unsupported vector index type: %q",
 			class.VectorIndexType)
 	}
 
-	parsed, err := m.hnswConfigParser(class.VectorIndexConfig)
+	parsed, err := m.configParser(class.VectorIndexConfig, class.VectorIndexType)
 	if err != nil {
 		return errors.Wrap(err, "parse vector index config")
 	}

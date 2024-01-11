@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -99,7 +99,7 @@ func (db *DB) ShardsBackup(
 		}
 	}()
 
-	sm := make(map[string]*Shard, len(shards))
+	sm := make(map[string]ShardLike, len(shards))
 	for _, shardName := range shards {
 		shard := idx.shards.Load(shardName)
 		if shard == nil {
@@ -112,12 +112,12 @@ func (db *DB) ShardsBackup(
 	idx.backupMutex.Lock()
 	defer idx.backupMutex.Unlock()
 	for shardName, shard := range sm {
-		if err := shard.beginBackup(ctx); err != nil {
+		if err := shard.BeginBackup(ctx); err != nil {
 			return cd, fmt.Errorf("class %q: shard %q: begin backup: %w", class, shardName, err)
 		}
 
 		sd := backup.ShardDescriptor{Name: shardName}
-		if err := shard.listBackupFiles(ctx, &sd); err != nil {
+		if err := shard.ListBackupFiles(ctx, &sd); err != nil {
 			return cd, fmt.Errorf("class %q: shard %q: list backup files: %w", class, shardName, err)
 		}
 
@@ -156,12 +156,21 @@ func (db *DB) ClassExists(name string) bool {
 	return db.IndexExists(schema.ClassName(name))
 }
 
-func (db *DB) Shards(ctx context.Context, class string) []string {
+// Returns the list of nodes where shards of class are contained.
+// If there are no shards for the class, returns an empty list
+// If there are shards for the class but no nodes are found, return an error
+func (db *DB) Shards(ctx context.Context, class string) ([]string, error) {
 	unique := make(map[string]struct{})
 
 	ss := db.schemaGetter.CopyShardingState(class)
+	if len(ss.Physical) == 0 {
+		return []string{}, nil
+	}
+
 	for _, shard := range ss.Physical {
-		unique[shard.BelongsToNode()] = struct{}{}
+		for _, node := range shard.BelongsToNodes {
+			unique[node] = struct{}{}
+		}
 	}
 
 	var (
@@ -173,8 +182,11 @@ func (db *DB) Shards(ctx context.Context, class string) []string {
 		nodes[counter] = node
 		counter++
 	}
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("found %v shards, but has 0 nodes", len(ss.Physical))
+	}
 
-	return nodes
+	return nodes, nil
 }
 
 func (db *DB) ListClasses(ctx context.Context) []string {
@@ -204,13 +216,13 @@ func (i *Index) descriptor(ctx context.Context, backupID string, desc *backup.Cl
 	i.backupMutex.Lock()
 	defer i.backupMutex.Unlock()
 
-	if err = i.ForEachShard(func(name string, s *Shard) error {
-		if err = s.beginBackup(ctx); err != nil {
+	if err = i.ForEachShard(func(name string, s ShardLike) error {
+		if err = s.BeginBackup(ctx); err != nil {
 			return fmt.Errorf("pause compaction and flush: %w", err)
 		}
 		var sd backup.ShardDescriptor
-		if err := s.listBackupFiles(ctx, &sd); err != nil {
-			return fmt.Errorf("list shard %v files: %w", s.name, err)
+		if err := s.ListBackupFiles(ctx, &sd); err != nil {
+			return fmt.Errorf("list shard %v files: %w", s.Name(), err)
 		}
 
 		desc.Shards = append(desc.Shards, &sd)
@@ -263,7 +275,7 @@ func (i *Index) resetBackupState() {
 }
 
 func (i *Index) resumeMaintenanceCycles(ctx context.Context) (lastErr error) {
-	i.ForEachShard(func(name string, shard *Shard) error {
+	i.ForEachShard(func(name string, shard ShardLike) error {
 		if err := shard.resumeMaintenanceCycles(ctx); err != nil {
 			lastErr = err
 			i.logger.WithField("shard", name).WithField("op", "resume_maintenance").Error(err)

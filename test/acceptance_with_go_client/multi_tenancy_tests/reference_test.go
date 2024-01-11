@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -23,6 +23,8 @@ import (
 	"github.com/stretchr/testify/require"
 	wvt "github.com/weaviate/weaviate-go-client/v4/weaviate"
 	"github.com/weaviate/weaviate-go-client/v4/weaviate/fault"
+	"github.com/weaviate/weaviate-go-client/v4/weaviate/filters"
+	"github.com/weaviate/weaviate-go-client/v4/weaviate/graphql"
 	"github.com/weaviate/weaviate/entities/models"
 )
 
@@ -44,6 +46,7 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 		}
 		soupIds := fixtures.IdsByClass["Soup"]
 		pizzaIds := fixtures.IdsByClass["Pizza"]
+		pizzaBeacons := fixtures.BeaconsByClass["Pizza"]
 
 		fixtures.CreateSchemaSoupForTenants(t, client)
 		fixtures.CreateTenantsSoup(t, client, tenants...)
@@ -86,9 +89,25 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 			}
 		}
 
+		for _, tenant := range tenants {
+			_, err := client.Data().Creator().
+				WithClassName("Soup").
+				WithID(fixtures.SOUP_TRIPE_ID).
+				WithProperties(map[string]interface{}{
+					"name":           "Tripe",
+					"description":    "Tripe soup is a speciality of Romanian cuisine where it is known as Ciorbă de Burtă.",
+					"price":          float32(2.3),
+					"relatedToPizza": pizzaBeacons,
+				}).
+				WithTenant(tenant.Name).
+				Do(context.Background())
+			require.Nil(t, err)
+		}
+		allSoupIds := append(soupIds, fixtures.SOUP_TRIPE_ID)
+
 		t.Run("verify created", func(t *testing.T) {
 			for _, tenant := range tenants {
-				for _, soupId := range soupIds {
+				for _, soupId := range allSoupIds {
 					objects, err := client.Data().ObjectsGetter().
 						WithClassName("Soup").
 						WithID(soupId).
@@ -103,6 +122,25 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 				}
 			}
 		})
+
+		t.Run("verify graphql search", func(t *testing.T) {
+			for _, tenant := range tenants {
+				resp, err := client.GraphQL().Get().
+					WithClassName("Soup").
+					WithTenant(tenant.Name).
+					WithFields(graphql.Field{
+						Name: "_additional", Fields: []graphql.Field{{Name: "id"}},
+					}).
+					WithWhere(filters.Where().
+						WithPath([]string{"relatedToPizza", "Pizza", "name"}).
+						WithOperator(filters.Equal).
+						WithValueString("Quattro Formaggi")).
+					Do(context.Background())
+
+				require.NoError(t, err)
+				assertGraphqlGetIds(t, resp, "Soup", allSoupIds)
+			}
+		})
 	})
 
 	t.Run("fails creating references between MT classes without tenant", func(t *testing.T) {
@@ -114,6 +152,7 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 		}
 		soupIds := fixtures.IdsByClass["Soup"]
 		pizzaIds := fixtures.IdsByClass["Pizza"]
+		pizzaBeacons := fixtures.BeaconsByClass["Pizza"]
 
 		fixtures.CreateSchemaSoupForTenants(t, client)
 		fixtures.CreateTenantsSoup(t, client, tenants...)
@@ -156,6 +195,21 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 			}
 		}
 
+		_, err := client.Data().Creator().
+			WithClassName("Soup").
+			WithID(fixtures.SOUP_TRIPE_ID).
+			WithProperties(map[string]interface{}{
+				"name":           "Tripe",
+				"description":    "Tripe soup is a speciality of Romanian cuisine where it is known as Ciorbă de Burtă.",
+				"price":          float32(2.3),
+				"relatedToPizza": pizzaBeacons,
+			}).
+			Do(context.Background())
+		require.NotNil(t, err)
+		clientErr := err.(*fault.WeaviateClientError)
+		assert.Equal(t, 422, clientErr.StatusCode)
+		assert.Contains(t, clientErr.Msg, "has multi-tenancy enabled, but request was without tenant")
+
 		t.Run("verify not created", func(t *testing.T) {
 			for _, tenant := range tenants {
 				for _, soupId := range soupIds {
@@ -170,6 +224,15 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 					require.Len(t, objects, 1)
 					assert.Nil(t, objects[0].Properties.(map[string]interface{})["relatedToPizza"])
 				}
+				_, err := client.Data().ObjectsGetter().
+					WithClassName("Soup").
+					WithID(fixtures.SOUP_TRIPE_ID).
+					WithTenant(tenant.Name).
+					Do(context.Background())
+				require.NotNil(t, err)
+				clientErr := err.(*fault.WeaviateClientError)
+				assert.Equal(t, 404, clientErr.StatusCode)
+				assert.Contains(t, clientErr.Msg, "")
 			}
 		})
 	})
@@ -183,6 +246,7 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 		}
 		soupIds := fixtures.IdsByClass["Soup"]
 		pizzaIds := fixtures.IdsByClass["Pizza"]
+		pizzaBeacons := fixtures.BeaconsByClass["Pizza"]
 
 		fixtures.CreateSchemaSoupForTenants(t, client)
 		fixtures.CreateTenantsSoup(t, client, tenants...)
@@ -226,6 +290,22 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 			}
 		}
 
+		_, err := client.Data().Creator().
+			WithClassName("Soup").
+			WithID(fixtures.SOUP_TRIPE_ID).
+			WithProperties(map[string]interface{}{
+				"name":           "Tripe",
+				"description":    "Tripe soup is a speciality of Romanian cuisine where it is known as Ciorbă de Burtă.",
+				"price":          float32(2.3),
+				"relatedToPizza": pizzaBeacons,
+			}).
+			WithTenant("nonExistentTenant").
+			Do(context.Background())
+		require.NotNil(t, err)
+		clientErr := err.(*fault.WeaviateClientError)
+		assert.Equal(t, 422, clientErr.StatusCode)
+		assert.Contains(t, clientErr.Msg, "tenant not found")
+
 		t.Run("verify not created", func(t *testing.T) {
 			for _, tenant := range tenants {
 				for _, soupId := range soupIds {
@@ -240,6 +320,15 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 					require.Len(t, objects, 1)
 					assert.Nil(t, objects[0].Properties.(map[string]interface{})["relatedToPizza"])
 				}
+				_, err := client.Data().ObjectsGetter().
+					WithClassName("Soup").
+					WithID(fixtures.SOUP_TRIPE_ID).
+					WithTenant(tenant.Name).
+					Do(context.Background())
+				require.NotNil(t, err)
+				clientErr := err.(*fault.WeaviateClientError)
+				assert.Equal(t, 404, clientErr.StatusCode)
+				assert.Contains(t, clientErr.Msg, "")
 			}
 		})
 	})
@@ -253,6 +342,7 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 		}
 		soupIds := fixtures.IdsByClass["Soup"]
 		pizzaIds := fixtures.IdsByClass["Pizza"]
+		pizzaBeacons := fixtures.BeaconsByClass["Pizza"]
 
 		fixtures.CreateSchemaSoupForTenants(t, client)
 		fixtures.CreateTenantsSoup(t, client, tenants...)
@@ -296,6 +386,22 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 			}
 		}
 
+		_, err := client.Data().Creator().
+			WithClassName("Soup").
+			WithID(fixtures.SOUP_TRIPE_ID).
+			WithProperties(map[string]interface{}{
+				"name":           "Tripe",
+				"description":    "Tripe soup is a speciality of Romanian cuisine where it is known as Ciorbă de Burtă.",
+				"price":          float32(2.3),
+				"relatedToPizza": pizzaBeacons,
+			}).
+			WithTenant(tenants[1].Name).
+			Do(context.Background())
+		require.NotNil(t, err)
+		clientErr := err.(*fault.WeaviateClientError)
+		assert.Equal(t, 422, clientErr.StatusCode)
+		assert.Contains(t, clientErr.Msg, "no object with id")
+
 		t.Run("verify not created", func(t *testing.T) {
 			for _, soupId := range soupIds {
 				objects, err := client.Data().ObjectsGetter().
@@ -309,6 +415,15 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 				require.Len(t, objects, 1)
 				assert.Nil(t, objects[0].Properties.(map[string]interface{})["relatedToPizza"])
 			}
+			_, err := client.Data().ObjectsGetter().
+				WithClassName("Soup").
+				WithID(fixtures.SOUP_TRIPE_ID).
+				WithTenant(tenants[0].Name).
+				Do(context.Background())
+			require.NotNil(t, err)
+			clientErr := err.(*fault.WeaviateClientError)
+			assert.Equal(t, 404, clientErr.StatusCode)
+			assert.Contains(t, clientErr.Msg, "")
 		})
 
 		t.Run("verify new objects not created", func(t *testing.T) {
@@ -1191,6 +1306,25 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 				}
 			}
 		})
+
+		t.Run("verify graphql search", func(t *testing.T) {
+			for _, tenant := range tenants {
+				resp, err := client.GraphQL().Get().
+					WithClassName("Soup").
+					WithTenant(tenant.Name).
+					WithFields(graphql.Field{
+						Name: "_additional", Fields: []graphql.Field{{Name: "id"}},
+					}).
+					WithWhere(filters.Where().
+						WithPath([]string{"relatedToPizza", "Pizza", "name"}).
+						WithOperator(filters.Equal).
+						WithValueString("Quattro Formaggi")).
+					Do(context.Background())
+
+				require.NoError(t, err)
+				assertGraphqlGetIds(t, resp, "Soup", []string{})
+			}
+		})
 	})
 
 	t.Run("fails replacing references between MT classes without tenant", func(t *testing.T) {
@@ -1972,6 +2106,23 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 					len(pizzaIds))
 			}
 		})
+
+		t.Run("verify graphql search", func(t *testing.T) {
+			resp, err := client.GraphQL().Get().
+				WithClassName("Soup").
+				WithTenant(tenantSoup.Name).
+				WithFields(graphql.Field{
+					Name: "_additional", Fields: []graphql.Field{{Name: "id"}},
+				}).
+				WithWhere(filters.Where().
+					WithPath([]string{"relatedToPizza", "Pizza", "name"}).
+					WithOperator(filters.Equal).
+					WithValueString("Quattro Formaggi")).
+				Do(context.Background())
+
+			require.NoError(t, err)
+			assertGraphqlGetIds(t, resp, "Soup", soupIds)
+		})
 	})
 
 	t.Run("fails creating references between MT and non-MT classes without tenant", func(t *testing.T) {
@@ -2688,6 +2839,23 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 					assert.True(t, found, fmt.Sprintf("ref to '%s' not found", pizzaId))
 				}
 			}
+		})
+
+		t.Run("verify graphql search", func(t *testing.T) {
+			resp, err := client.GraphQL().Get().
+				WithClassName("Soup").
+				WithTenant(tenantSoup.Name).
+				WithFields(graphql.Field{
+					Name: "_additional", Fields: []graphql.Field{{Name: "id"}},
+				}).
+				WithWhere(filters.Where().
+					WithPath([]string{"relatedToPizza", "Pizza", "name"}).
+					WithOperator(filters.Equal).
+					WithValueString("Quattro Formaggi")).
+				Do(context.Background())
+
+			require.NoError(t, err)
+			assertGraphqlGetIds(t, resp, "Soup", []string{})
 		})
 	})
 
@@ -3668,4 +3836,39 @@ func TestDataReference_MultiTenancy(t *testing.T) {
 			}
 		})
 	})
+}
+
+func assertGraphqlGetIds(t *testing.T, resp *models.GraphQLResponse, className string,
+	expectedIds []string,
+) {
+	require.NotNil(t, resp)
+	require.Nil(t, resp.Errors)
+	require.NotNil(t, resp.Data)
+	require.Contains(t, resp.Data, "Get")
+
+	get := resp.Data["Get"]
+	require.NotNil(t, get)
+
+	classes, ok := get.(map[string]interface{})
+	require.True(t, ok)
+	require.Contains(t, classes, className)
+
+	objects, ok := classes[className].([]interface{})
+	require.True(t, ok)
+
+	ids := make([]string, len(objects))
+	for i := range objects {
+		props, ok := objects[i].(map[string]interface{})
+		require.True(t, ok)
+		require.Contains(t, props, "_additional")
+
+		add, ok := props["_additional"].(map[string]interface{})
+		require.True(t, ok)
+		require.Contains(t, add, "id")
+
+		id, ok := add["id"].(string)
+		require.True(t, ok)
+		ids[i] = id
+	}
+	require.ElementsMatch(t, expectedIds, ids)
 }

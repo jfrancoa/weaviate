@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -77,7 +77,7 @@ func bucketBackup_ListFiles(ctx context.Context, t *testing.T, opts []BucketOpti
 	})
 
 	t.Run("assert expected bucket contents", func(t *testing.T) {
-		files, err := b.ListFiles(ctx)
+		files, err := b.ListFiles(ctx, dirName)
 		assert.Nil(t, err)
 		assert.Len(t, files, 3)
 

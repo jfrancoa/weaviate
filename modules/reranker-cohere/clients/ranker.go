@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -199,7 +199,7 @@ func (c *client) getApiKey(ctx context.Context) (string, error) {
 	apiKey := ctx.Value(key)
 	// try getting header from GRPC if not successful
 	if apiKey == nil {
-		apiKey = modulecomponents.GetApiKeyFromGRPC(ctx, key)
+		apiKey = modulecomponents.GetValueFromGRPC(ctx, key)
 	}
 	if apiKeyHeader, ok := apiKey.([]string); ok &&
 		len(apiKeyHeader) > 0 && len(apiKeyHeader[0]) > 0 {

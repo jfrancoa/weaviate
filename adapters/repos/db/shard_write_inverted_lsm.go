@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -208,18 +208,27 @@ func (s *Shard) batchExtendInvertedIndexItemsLSMNoFrequency(b *lsmkv.Bucket,
 	return b.SetAdd(item.Data, docIDs)
 }
 
-func (s *Shard) addPropLengths(props []inverted.Property) error {
+func (s *Shard) SetPropertyLengths(props []inverted.Property) error {
 	for _, prop := range props {
 		if !prop.HasSearchableIndex {
 			continue
 		}
 
-		if err := s.propLengths.TrackProperty(prop.Name, float32(len(prop.Items))); err != nil {
+		if err := s.GetPropertyLengthTracker().TrackProperty(prop.Name, float32(len(prop.Items))); err != nil {
 			return err
 		}
 
 	}
 
+	s.GetPropertyLengthTracker().Flush(false)
+	return nil
+}
+
+func (s *Shard) ChangeObjectCountBy(count int) error {
+	if err := s.GetPropertyLengthTracker().TrackObjects(count); err != nil {
+		return err
+	}
+	s.GetPropertyLengthTracker().Flush(false)
 	return nil
 }
 
@@ -229,12 +238,13 @@ func (s *Shard) subtractPropLengths(props []inverted.Property) error {
 			continue
 		}
 
-		if err := s.propLengths.UnTrackProperty(prop.Name, float32(len(prop.Items))); err != nil {
+		if err := s.GetPropertyLengthTracker().UnTrackProperty(prop.Name, float32(len(prop.Items))); err != nil {
 			return err
 		}
 
 	}
 
+	s.GetPropertyLengthTracker().Flush(false)
 	return nil
 }
 

@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -48,7 +48,7 @@ func init() {
       "url": "https://github.com/weaviate",
       "email": "hello@weaviate.io"
     },
-    "version": "1.21.5"
+    "version": "1.23.2"
   },
   "basePath": "/v1",
   "paths": {
@@ -882,6 +882,11 @@ func init() {
           "nodes"
         ],
         "operationId": "nodes.get",
+        "parameters": [
+          {
+            "$ref": "#/parameters/CommonOutputVerbosityParameterQuery"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Nodes status successfully returned",
@@ -935,6 +940,9 @@ func init() {
             "name": "className",
             "in": "path",
             "required": true
+          },
+          {
+            "$ref": "#/parameters/CommonOutputVerbosityParameterQuery"
           }
         ],
         "responses": {
@@ -2624,6 +2632,11 @@ func init() {
             "name": "className",
             "in": "path",
             "required": true
+          },
+          {
+            "type": "string",
+            "name": "tenant",
+            "in": "query"
           }
         ],
         "responses": {
@@ -2971,12 +2984,42 @@ func init() {
         }
       }
     },
+    "BackupConfig": {
+      "description": "Backup custom configuration",
+      "properties": {
+        "CPUPercentage": {
+          "description": "Desired CPU core utilization ranging from 1%-80%",
+          "type": "integer",
+          "default": 50,
+          "maximum": 80,
+          "minimum": 1
+        },
+        "ChunkSize": {
+          "description": "Weaviate will attempt to come close the specified size, with a minimum of 2MB, default of 128MB, and a maximum of 512MB",
+          "type": "integer",
+          "default": 128,
+          "maximum": 512,
+          "minimum": 2
+        },
+        "CompressionLevel": {
+          "description": "compression level used by compression algorithm",
+          "type": "string",
+          "default": "DefaultCompression",
+          "enum": [
+            "DefaultCompression",
+            "BestSpeed",
+            "BestCompression"
+          ]
+        }
+      }
+    },
     "BackupCreateRequest": {
       "description": "Request body for creating a backup of a set of classes",
       "properties": {
         "config": {
           "description": "Custom configuration for the backup creation process",
-          "type": "object"
+          "type": "object",
+          "$ref": "#/definitions/BackupConfig"
         },
         "exclude": {
           "description": "List of classes to exclude from the backup creation process",
@@ -3076,7 +3119,8 @@ func init() {
       "properties": {
         "config": {
           "description": "Custom configuration for the backup restoration process",
-          "type": "object"
+          "type": "object",
+          "$ref": "#/definitions/BackupConfig"
         },
         "exclude": {
           "description": "List of classes to exclude from the backup restoration process",
@@ -3089,6 +3133,13 @@ func init() {
           "description": "List of classes to include in the backup restoration process",
           "type": "array",
           "items": {
+            "type": "string"
+          }
+        },
+        "node_mapping": {
+          "description": "Allows overriding the node names stored in the backup with different ones. Useful when restoring backups to a different environment.",
+          "type": "object",
+          "additionalProperties": {
             "type": "string"
           }
         }
@@ -3343,7 +3394,8 @@ func init() {
           "description": "How many objects are currently in the batch queue.",
           "type": "number",
           "format": "int",
-          "x-omitempty": false
+          "x-nullable": true,
+          "x-omitempty": true
         },
         "ratePerSecond": {
           "description": "How many objects are approximately processed from the batch queue per second.",
@@ -3967,6 +4019,11 @@ func init() {
           "type": "string",
           "x-omitempty": false
         },
+        "compressed": {
+          "description": "The status of vector compression/quantization.",
+          "format": "boolean",
+          "x-omitempty": false
+        },
         "name": {
           "description": "The name of the shard.",
           "type": "string",
@@ -3974,6 +4031,17 @@ func init() {
         },
         "objectCount": {
           "description": "The number of objects in shard.",
+          "type": "number",
+          "format": "int64",
+          "x-omitempty": false
+        },
+        "vectorIndexingStatus": {
+          "description": "The status of the vector indexing process.",
+          "format": "string",
+          "x-omitempty": false
+        },
+        "vectorQueueLength": {
+          "description": "The length of the vector indexing queue.",
           "type": "number",
           "format": "int64",
           "x-omitempty": false
@@ -4513,6 +4581,11 @@ func init() {
         "status": {
           "description": "Status of the shard",
           "type": "string"
+        },
+        "vectorQueueSize": {
+          "description": "Size of the vector queue of the shard",
+          "type": "integer",
+          "x-omitempty": false
         }
       }
     },
@@ -4831,6 +4904,13 @@ func init() {
       "name": "order",
       "in": "query"
     },
+    "CommonOutputVerbosityParameterQuery": {
+      "type": "string",
+      "default": "minimal",
+      "description": "Controls the verbosity of the output, possible values are: \"minimal\", \"verbose\". Defaults to \"minimal\".",
+      "name": "output",
+      "in": "query"
+    },
     "CommonSortParameterQuery": {
       "type": "string",
       "description": "Sort parameter to pass an information about the names of the sort fields",
@@ -4908,7 +4988,7 @@ func init() {
       "url": "https://github.com/weaviate",
       "email": "hello@weaviate.io"
     },
-    "version": "1.21.5"
+    "version": "1.23.2"
   },
   "basePath": "/v1",
   "paths": {
@@ -5754,6 +5834,15 @@ func init() {
           "nodes"
         ],
         "operationId": "nodes.get",
+        "parameters": [
+          {
+            "type": "string",
+            "default": "minimal",
+            "description": "Controls the verbosity of the output, possible values are: \"minimal\", \"verbose\". Defaults to \"minimal\".",
+            "name": "output",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Nodes status successfully returned",
@@ -5807,6 +5896,13 @@ func init() {
             "name": "className",
             "in": "path",
             "required": true
+          },
+          {
+            "type": "string",
+            "default": "minimal",
+            "description": "Controls the verbosity of the output, possible values are: \"minimal\", \"verbose\". Defaults to \"minimal\".",
+            "name": "output",
+            "in": "query"
           }
         ],
         "responses": {
@@ -7598,6 +7694,11 @@ func init() {
             "name": "className",
             "in": "path",
             "required": true
+          },
+          {
+            "type": "string",
+            "name": "tenant",
+            "in": "query"
           }
         ],
         "responses": {
@@ -7945,12 +8046,42 @@ func init() {
         }
       }
     },
+    "BackupConfig": {
+      "description": "Backup custom configuration",
+      "properties": {
+        "CPUPercentage": {
+          "description": "Desired CPU core utilization ranging from 1%-80%",
+          "type": "integer",
+          "default": 50,
+          "maximum": 80,
+          "minimum": 1
+        },
+        "ChunkSize": {
+          "description": "Weaviate will attempt to come close the specified size, with a minimum of 2MB, default of 128MB, and a maximum of 512MB",
+          "type": "integer",
+          "default": 128,
+          "maximum": 512,
+          "minimum": 2
+        },
+        "CompressionLevel": {
+          "description": "compression level used by compression algorithm",
+          "type": "string",
+          "default": "DefaultCompression",
+          "enum": [
+            "DefaultCompression",
+            "BestSpeed",
+            "BestCompression"
+          ]
+        }
+      }
+    },
     "BackupCreateRequest": {
       "description": "Request body for creating a backup of a set of classes",
       "properties": {
         "config": {
           "description": "Custom configuration for the backup creation process",
-          "type": "object"
+          "type": "object",
+          "$ref": "#/definitions/BackupConfig"
         },
         "exclude": {
           "description": "List of classes to exclude from the backup creation process",
@@ -8050,7 +8181,8 @@ func init() {
       "properties": {
         "config": {
           "description": "Custom configuration for the backup restoration process",
-          "type": "object"
+          "type": "object",
+          "$ref": "#/definitions/BackupConfig"
         },
         "exclude": {
           "description": "List of classes to exclude from the backup restoration process",
@@ -8063,6 +8195,13 @@ func init() {
           "description": "List of classes to include in the backup restoration process",
           "type": "array",
           "items": {
+            "type": "string"
+          }
+        },
+        "node_mapping": {
+          "description": "Allows overriding the node names stored in the backup with different ones. Useful when restoring backups to a different environment.",
+          "type": "object",
+          "additionalProperties": {
             "type": "string"
           }
         }
@@ -8406,7 +8545,8 @@ func init() {
           "description": "How many objects are currently in the batch queue.",
           "type": "number",
           "format": "int",
-          "x-omitempty": false
+          "x-nullable": true,
+          "x-omitempty": true
         },
         "ratePerSecond": {
           "description": "How many objects are approximately processed from the batch queue per second.",
@@ -9100,6 +9240,11 @@ func init() {
           "type": "string",
           "x-omitempty": false
         },
+        "compressed": {
+          "description": "The status of vector compression/quantization.",
+          "format": "boolean",
+          "x-omitempty": false
+        },
         "name": {
           "description": "The name of the shard.",
           "type": "string",
@@ -9107,6 +9252,17 @@ func init() {
         },
         "objectCount": {
           "description": "The number of objects in shard.",
+          "type": "number",
+          "format": "int64",
+          "x-omitempty": false
+        },
+        "vectorIndexingStatus": {
+          "description": "The status of the vector indexing process.",
+          "format": "string",
+          "x-omitempty": false
+        },
+        "vectorQueueLength": {
+          "description": "The length of the vector indexing queue.",
           "type": "number",
           "format": "int64",
           "x-omitempty": false
@@ -9664,6 +9820,11 @@ func init() {
         "status": {
           "description": "Status of the shard",
           "type": "string"
+        },
+        "vectorQueueSize": {
+          "description": "Size of the vector queue of the shard",
+          "type": "integer",
+          "x-omitempty": false
         }
       }
     },
@@ -9989,6 +10150,13 @@ func init() {
       "type": "string",
       "description": "Order parameter to tell how to order (asc or desc) data within given field",
       "name": "order",
+      "in": "query"
+    },
+    "CommonOutputVerbosityParameterQuery": {
+      "type": "string",
+      "default": "minimal",
+      "description": "Controls the verbosity of the output, possible values are: \"minimal\", \"verbose\". Defaults to \"minimal\".",
+      "name": "output",
       "in": "query"
     },
     "CommonSortParameterQuery": {

@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -307,6 +307,8 @@ func (m *Manager) validateVectorizer(ctx context.Context, class *models.Class) e
 func (m *Manager) validateVectorIndex(ctx context.Context, class *models.Class) error {
 	switch class.VectorIndexType {
 	case "hnsw":
+		return nil
+	case "flat":
 		return nil
 	default:
 		return errors.Errorf("unrecognized or unsupported vectorIndexType %q",

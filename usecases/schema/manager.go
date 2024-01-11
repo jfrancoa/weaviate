@@ -4,7 +4,7 @@
 //  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
 //   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
 //
-//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//  Copyright © 2016 - 2024 Weaviate B.V. All rights reserved.
 //
 //  CONTACT: hello@weaviate.io
 //
@@ -42,7 +42,7 @@ type Manager struct {
 	moduleConfig            ModuleConfig
 	cluster                 *cluster.TxManager
 	clusterState            clusterState
-	hnswConfigParser        VectorConfigParser
+	configParser            VectorConfigParser
 	invertedConfigValidator InvertedConfigValidator
 	scaleOut                scaleOut
 	RestoreStatus           sync.Map
@@ -58,7 +58,7 @@ type Manager struct {
 	schemaCache
 }
 
-type VectorConfigParser func(in interface{}) (schema.VectorIndexConfig, error)
+type VectorConfigParser func(in interface{}, vectorIndexType string) (schema.VectorIndexConfig, error)
 
 type InvertedConfigValidator func(in *models.InvertedIndexConfig) error
 
@@ -159,7 +159,7 @@ type scaleOut interface {
 // NewManager creates a new manager
 func NewManager(migrator migrate.Migrator, repo SchemaStore,
 	logger logrus.FieldLogger, authorizer authorizer, config config.Config,
-	hnswConfigParser VectorConfigParser, vectorizerValidator VectorizerValidator,
+	configParser VectorConfigParser, vectorizerValidator VectorizerValidator,
 	invertedConfigValidator InvertedConfigValidator,
 	moduleConfig ModuleConfig, clusterState clusterState,
 	txClient cluster.Client, txPersistence cluster.Persistence,
@@ -173,7 +173,7 @@ func NewManager(migrator migrate.Migrator, repo SchemaStore,
 		schemaCache:             schemaCache{State: State{}},
 		logger:                  logger,
 		Authorizer:              authorizer,
-		hnswConfigParser:        hnswConfigParser,
+		configParser:            configParser,
 		vectorizerValidator:     vectorizerValidator,
 		invertedConfigValidator: invertedConfigValidator,
 		moduleConfig:            moduleConfig,
